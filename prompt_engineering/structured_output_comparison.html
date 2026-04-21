@@ -1,0 +1,86 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{padding:1rem 0;font-size:13px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:14px 16px}
+.card-title{font-size:14px;font-weight:500;margin-bottom:8px;color:var(--color-text-primary)}
+.badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;margin-bottom:10px}
+.b-warn{background:#FAEEDA;color:#633806}
+.b-ok{background:#E1F5EE;color:#085041}
+.b-info{background:#E6F1FB;color:#0C447C}
+@media(prefers-color-scheme:dark){
+  .b-warn{background:#412402;color:#FAC775}
+  .b-ok{background:#085041;color:#9FE1CB}
+  .b-info{background:#042C53;color:#B5D4F4}
+}
+pre{font-family:var(--font-mono);font-size:11px;background:var(--color-background-tertiary);border-radius:var(--border-radius-md);padding:10px;white-space:pre-wrap;line-height:1.6;color:var(--color-text-primary)}
+.row{display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.row:last-child{border-bottom:none}
+.row-label{font-size:11px;color:var(--color-text-secondary);min-width:80px;flex-shrink:0;padding-top:2px}
+.row-val{font-size:12px;color:var(--color-text-primary);line-height:1.5}
+.check{width:14px;height:14px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0;margin-top:2px}
+.yes{background:#E1F5EE;color:#0F6E56}
+.no{background:#FCEBEB;color:#A32D2D}
+@media(prefers-color-scheme:dark){
+  .yes{background:#085041;color:#9FE1CB}
+  .no{background:#791F1F;color:#F7C1C1}
+}
+</style>
+<div class="wrap">
+  <h2 class="sr-only">構造化出力 — アプローチ比較</h2>
+  <div class="cols">
+    <div class="card">
+      <div class="card-title">プロンプトで指示（旧来の方法）</div>
+      <span class="badge b-warn">ベストエフォート</span>
+      <pre>JSONで返してください。
+フィールド:
+- name: string
+- score: number
+- tags: array</pre>
+      <div style="margin-top:10px">
+        <div class="row"><span class="row-label">出力保証</span><span class="row-val">なし（マークダウン混入や形式ずれが起きる）</span></div>
+        <div class="row"><span class="row-label">使用場面</span><span class="row-val">claude.ai チャットなど非API環境</span></div>
+        <div class="row"><span class="row-label">コスト増</span><span class="row-val">なし</span></div>
+      </div>
+    </div>
+    <div class="card" style="border-color:var(--color-border-info)">
+      <div class="card-title">Structured Output API</div>
+      <span class="badge b-ok">スキーマ保証</span>
+      <pre>output_config={
+  "format": {
+    "type": "json_schema",
+    "json_schema": {...}
+  }
+}</pre>
+      <div style="margin-top:10px">
+        <div class="row"><span class="row-label">出力保証</span><span class="row-val">JSON Schema 準拠を保証（constrained decoding）</span></div>
+        <div class="row"><span class="row-label">使用場面</span><span class="row-val">データ抽出・レポート生成・エージェント</span></div>
+        <div class="row"><span class="row-label">コスト増</span><span class="row-val">約2〜3%（スキーマコンパイルのオーバーヘッド）</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Strict モード（<code style="font-size:11px">strict: true</code>）— ツールスキーマへの適用</div>
+    <span class="badge b-info">ツール呼び出し保証</span>
+    <pre>tools=[{
+  "name": "extract_review",
+  "strict": True,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "rating": {"type": "integer"},
+      "sentiment": {"type": "string",
+        "enum": ["positive","neutral","negative"]},
+      "summary": {"type": "string"}
+    },
+    "required": ["rating","sentiment","summary"]
+  }
+}]</pre>
+    <div style="margin-top:10px">
+      <div class="row"><span class="row-label">効果</span><span class="row-val">Claudeがツールを呼び出す際、パラメータが定義済みスキーマに100%一致することを保証</span></div>
+      <div class="row"><span class="row-label">制約</span><span class="row-val">全strict toolsの合計でoptional params ≤ 24個、ネスト深さ制限あり</span></div>
+      <div class="row"><span class="row-label">JSON出力との違い</span><span class="row-val">JSON出力はClaudeの<em>返答形式</em>、Strictモードはツールの<em>入力パラメータ</em>を制御</span></div>
+    </div>
+  </div>
+</div>

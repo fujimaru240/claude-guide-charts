@@ -1,0 +1,130 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{padding:1rem 0;font-size:13px;color:var(--color-text-primary)}
+.heatmap-row{display:flex;gap:3px;margin-bottom:3px;align-items:center}
+.hm-label{width:64px;font-size:11px;color:var(--color-text-tertiary);text-align:right;padding-right:8px;flex-shrink:0}
+.hm-cell{flex:1;height:28px;border-radius:3px;cursor:pointer;transition:opacity .15s}
+.hm-cell:hover{outline:1.5px solid var(--color-border-primary)}
+.legend{display:flex;align-items:center;gap:6px;margin:12px 0 8px;font-size:11px;color:var(--color-text-secondary)}
+.lg-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;flex:1;max-width:140px}
+.lg-seg{flex:1}
+.info{font-size:12px;color:var(--color-text-secondary);line-height:1.6;padding:10px 12px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);margin-top:10px}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.pill{font-size:11px;padding:3px 10px;border-radius:12px;cursor:pointer;border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary);background:var(--color-background-primary)}
+.pill.active{background:var(--color-background-info);border-color:var(--color-border-info);color:var(--color-text-info)}
+.axis{display:flex;gap:3px;margin-bottom:4px;padding-left:72px}
+.ax-label{flex:1;font-size:10px;color:var(--color-text-tertiary);text-align:center}
+</style>
+<div class="wrap">
+  <h2 class="sr-only">コンテキスト位置バイアス — ヒートマップ</h2>
+  <div class="pills" id="pills">
+    <div class="pill active" onclick="setMode('niah')">Needle in a Haystack</div>
+    <div class="pill" onclick="setMode('primacy')">初頭効果重視</div>
+    <div class="pill" onclick="setMode('recency')">新近効果重視</div>
+  </div>
+  <div class="axis" id="axis"></div>
+  <div id="heatmap"></div>
+  <div class="legend">
+    <span>想起率 低</span>
+    <div class="lg-bar">
+      <div class="lg-seg" style="background:#F09595"></div>
+      <div class="lg-seg" style="background:#EF9F27"></div>
+      <div class="lg-seg" style="background:#97C459"></div>
+      <div class="lg-seg" style="background:#1D9E75"></div>
+    </div>
+    <span>高</span>
+  </div>
+  <div class="info" id="info">セルにカーソルを当てると詳細が表示されます</div>
+</div>
+<script>
+const ROWS=6, COLS=10;
+const rowLabels=['10K','30K','60K','100K','150K','200K'];
+const colLabels=['先頭','10%','20%','30%','40%','50%','60%','70%','80%','末尾'];
+
+const modes={
+  niah:{
+    label:'Needle in a Haystack',
+    data:[
+      [95,70,55,45,40,38,42,50,72,90],
+      [92,65,48,40,34,30,36,44,65,88],
+      [88,55,38,30,25,22,28,36,55,82],
+      [82,45,28,20,16,14,18,26,44,75],
+      [74,35,20,14,10,9,11,18,34,66],
+      [65,25,14,9,6,5,7,12,24,55]
+    ],
+    desc:'コンテキスト全体を干し草（haystack）に見立て、1つの重要情報（針=needle）を埋め込んで想起できるかを測るベンチマーク。<b>中央に埋めるほど想起率が下がる「Lost in the Middle」現象</b>が観察される。Claudeは他モデルより改善されているが、長文では依然として中央部が弱い。'
+  },
+  primacy:{
+    label:'初頭効果（Primacy Effect）',
+    data:[
+      [96,82,70,62,56,52,50,48,47,46],
+      [94,78,65,56,50,45,43,41,40,39],
+      [90,72,58,48,42,38,35,33,32,31],
+      [84,64,50,40,34,30,27,25,24,23],
+      [76,54,40,30,25,21,19,17,16,15],
+      [68,44,30,22,18,14,12,10,9,8]
+    ],
+    desc:'<b>プロンプトの冒頭に置いた情報ほど強く処理される</b>傾向。最重要な指示・役割・制約はシステムプロンプトや会話の先頭に配置するのが効果的。コンテキストが長くなるほど初頭優位の傾きが急になる。'
+  },
+  recency:{
+    label:'新近効果（Recency Effect）',
+    data:[
+      [46,47,48,50,52,54,58,66,80,96],
+      [40,41,42,44,46,50,54,62,76,93],
+      [33,34,35,37,40,44,49,58,70,88],
+      [26,27,28,30,33,37,43,52,64,82],
+      [18,19,20,22,25,29,35,44,56,74],
+      [12,13,14,16,19,23,28,36,48,64]
+    ],
+    desc:'<b>直近のメッセージ・末尾の情報ほど想起されやすい</b>傾向。「最後にもう一度確認して」のような指示や、処理対象のデータをユーザーターンの末尾に置くのが効果的。ただし極端に長い会話では末尾効果も減衰する。'
+  }
+};
+
+let curMode='niah';
+function color(v){
+  if(v>=80)return'#1D9E75';
+  if(v>=55)return'#97C459';
+  if(v>=30)return'#EF9F27';
+  return'#F09595';
+}
+
+function render(){
+  const m=modes[curMode];
+  const hm=document.getElementById('heatmap');
+  const ax=document.getElementById('axis');
+  ax.innerHTML=colLabels.map(l=>`<div class="ax-label">${l}</div>`).join('');
+  hm.innerHTML='';
+  m.data.forEach((row,ri)=>{
+    const div=document.createElement('div');
+    div.className='heatmap-row';
+    div.innerHTML=`<div class="hm-label">${rowLabels[ri]}</div>`;
+    row.forEach((v,ci)=>{
+      const cell=document.createElement('div');
+      cell.className='hm-cell';
+      cell.style.background=color(v);
+      cell.style.opacity=0.55+v/200;
+      cell.title=`${rowLabels[ri]}トークン × ${colLabels[ci]}の位置: 想起率 ${v}%`;
+      cell.onmouseenter=()=>{
+        document.getElementById('info').innerHTML=
+          `<b>${rowLabels[ri]}トークン</b> のコンテキストで <b>${colLabels[ci]}</b> に置いた情報の想起率: <b style="color:var(--color-text-success)">${v}%</b>`;
+      };
+      cell.onmouseleave=()=>{
+        document.getElementById('info').innerHTML='セルにカーソルを当てると詳細が表示されます';
+      };
+      div.appendChild(cell);
+    });
+    hm.appendChild(div);
+  });
+  document.getElementById('info').innerHTML=m.desc;
+}
+
+function setMode(mode){
+  curMode=mode;
+  document.querySelectorAll('.pill').forEach((p,i)=>{
+    p.classList.toggle('active',['niah','primacy','recency'][i]===mode);
+  });
+  render();
+}
+render();
+</script>
