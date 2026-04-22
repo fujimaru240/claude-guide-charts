@@ -1,0 +1,151 @@
+
+<style>
+.layer {
+  border-radius: var(--border-radius-md);
+  border: 0.5px solid var(--color-border-tertiary);
+  padding: 10px 14px;
+  margin-bottom: 6px;
+  transition: background 0.25s, border-color 0.25s;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.layer-title { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
+.layer-sub { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+.layer.hit { background: var(--color-background-success); border-color: var(--color-border-success); }
+.layer.miss { background: var(--color-background-danger); border-color: var(--color-border-danger); }
+.layer.neutral { background: var(--color-background-secondary); }
+.layer.hit .layer-title { color: var(--color-text-success); }
+.layer.miss .layer-title { color: var(--color-text-danger); }
+.badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:500; padding:2px 8px; border-radius:20px; white-space:nowrap; }
+.badge-hit { background:var(--color-background-success); color:var(--color-text-success); }
+.badge-miss { background:var(--color-background-danger); color:var(--color-text-danger); }
+.badge-neutral { background:var(--color-background-secondary); color:var(--color-text-secondary); border:0.5px solid var(--color-border-tertiary); }
+.kv-block {
+  border-radius: var(--border-radius-md);
+  border: 0.5px solid var(--color-border-tertiary);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
+  transition: background 0.3s, color 0.3s, border-color 0.3s;
+  text-align: center;
+  line-height: 1.4;
+}
+.kv-block.stored { background:var(--color-background-info); color:var(--color-text-info); border-color:var(--color-border-info); }
+.kv-block.reused { background:var(--color-background-success); color:var(--color-text-success); border-color:var(--color-border-success); }
+.kv-block.recompute { background:var(--color-background-danger); color:var(--color-text-danger); border-color:var(--color-border-danger); }
+.kv-label { font-size:11px; color:var(--color-text-secondary); margin-bottom:4px; }
+.scenario-btn { font-size:13px; padding:7px 12px; border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-secondary); background:var(--color-background-primary); color:var(--color-text-primary); cursor:pointer; transition:background .15s; text-align:left; }
+.scenario-btn:hover { background:var(--color-background-secondary); }
+.scenario-btn.active { background:var(--color-background-secondary); border-color:var(--color-border-primary); font-weight:500; }
+.explain-box { font-size:13px; color:var(--color-text-secondary); line-height:1.7; padding:10px 14px; border-radius:var(--border-radius-md); background:var(--color-background-secondary); margin-top:12px; border-left:2px solid var(--color-border-secondary); border-top-left-radius:0; border-bottom-left-radius:0; }
+.arrow-down { text-align:center; color:var(--color-text-tertiary); font-size:16px; margin:4px 0; line-height:1; }
+.cost-tag { font-size:12px; font-weight:500; padding:2px 8px; border-radius:20px; }
+.cost-hi { background:var(--color-background-danger); color:var(--color-text-danger); }
+.cost-lo { background:var(--color-background-success); color:var(--color-text-success); }
+</style>
+
+<h2 class="sr-only">KVキャッシュの仕組みをシナリオで選んで確認できるインタラクティブ図</h2>
+
+<p style="font-size:13px;color:var(--color-text-secondary);margin:0 0 10px;">シナリオを選ぶと、各レイヤーのキャッシュ状態とVRAM上のKV行列の変化が見えます</p>
+
+<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;">
+  <button class="scenario-btn active" onclick="select(this,0)">何も変えていない</button>
+  <button class="scenario-btn" onclick="select(this,1)">ツール定義を変えた</button>
+  <button class="scenario-btn" onclick="select(this,2)">システムプロンプトを変えた</button>
+  <button class="scenario-btn" onclick="select(this,3)">会話メッセージを追加した</button>
+</div>
+
+<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;">
+
+  <div>
+    <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:6px;">プロンプト階層（tools → system → messages）</div>
+    <div id="layer-tools" class="layer neutral">
+      <div><div class="layer-title">Tools（ツール定義）</div><div class="layer-sub">最上位レイヤー</div></div>
+      <span id="b-tools" class="badge badge-neutral">待機</span>
+    </div>
+    <div class="arrow-down">↓</div>
+    <div id="layer-system" class="layer neutral">
+      <div><div class="layer-title">System（システムプロンプト）</div><div class="layer-sub">中間レイヤー</div></div>
+      <span id="b-system" class="badge badge-neutral">待機</span>
+    </div>
+    <div class="arrow-down">↓</div>
+    <div id="layer-messages" class="layer neutral">
+      <div><div class="layer-title">Messages（会話履歴）</div><div class="layer-sub">最下位レイヤー</div></div>
+      <span id="b-messages" class="badge badge-neutral">待機</span>
+    </div>
+  </div>
+
+  <div>
+    <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:6px;">VRAM上のKVキャッシュ（Attention計算の中間結果）</div>
+    <div class="kv-label">tools の K・V 行列</div>
+    <div id="kv-tools" class="kv-block">K[ ] V[ ]</div>
+    <div class="arrow-down" style="margin:4px 0;">↓</div>
+    <div class="kv-label">system の K・V 行列</div>
+    <div id="kv-system" class="kv-block">K[ ] V[ ]</div>
+    <div class="arrow-down" style="margin:4px 0;">↓</div>
+    <div class="kv-label">messages の K・V 行列</div>
+    <div id="kv-messages" class="kv-block">K[ ] V[ ]</div>
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;">
+      <span style="font-size:12px;color:var(--color-text-secondary);">処理コスト：</span>
+      <span id="cost-tag" class="cost-tag cost-hi">—</span>
+    </div>
+  </div>
+</div>
+
+<div id="explain" class="explain-box">シナリオを選ぶと、何が起きるかを説明します。</div>
+
+<script>
+const scenarios = [
+  {
+    layers: ['hit','hit','hit'],
+    kv: ['reused','reused','reused'],
+    cost: ['最小（全キャッシュ読込）','cost-lo'],
+    explain: 'プロンプトの中身が前回と完全一致しています。サーバーはハッシュ値で一致を確認し、VRAM上の3つのKV行列をすべてそのままモデルにロード。Attention計算を一切やり直さず、続きの生成だけを行います。読み込みコストはわずか0.1倍です。'
+  },
+  {
+    layers: ['miss','miss','miss'],
+    kv: ['recompute','recompute','recompute'],
+    cost: ['最大（全レイヤー再計算）','cost-hi'],
+    explain: 'ツール定義が変わると、ハッシュ値が最上位から一致しなくなります。tools・system・messagesの全KV行列を作り直す必要があり、3レイヤー分のAttention計算が発生します。キャッシュ書き込みコスト（1.25倍）もかかります。'
+  },
+  {
+    layers: ['hit','miss','miss'],
+    kv: ['reused','recompute','recompute'],
+    cost: ['中（system以降を再計算）','cost-hi'],
+    explain: 'ツール定義は変わっていないので、toolsのKV行列はVRAMから再利用できます。しかしsystemが変わった時点でハッシュが外れ、system・messagesのKV行列は作り直しになります。toolsだけ節約できます。'
+  },
+  {
+    layers: ['hit','hit','miss'],
+    kv: ['reused','reused','recompute'],
+    cost: ['小（messagesのみ再計算）','cost-lo'],
+    explain: '最もよくあるパターンです。ツール定義もシステムプロンプトも変わっていないので、toolsとsystemのKV行列はそのまま再利用。新しいメッセージの分だけ新しいKV行列を作り、既存のキャッシュの続きに追加します。コストが最も少ないです。'
+  }
+];
+
+const layerIds = ['tools','system','messages'];
+const labels = {hit:'キャッシュ再利用', miss:'無効化・再計算'};
+const kvLabels = {reused:'再利用（ヒット）', recompute:'再計算（ミス）', stored:'新規保存'};
+
+function select(btn, idx) {
+  document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const s = scenarios[idx];
+  layerIds.forEach((key, i) => {
+    const layer = document.getElementById('layer-' + key);
+    const badge = document.getElementById('b-' + key);
+    const kv = document.getElementById('kv-' + key);
+    layer.className = 'layer ' + s.layers[i];
+    badge.className = 'badge ' + (s.layers[i] === 'hit' ? 'badge-hit' : 'badge-miss');
+    badge.textContent = labels[s.layers[i]];
+    kv.className = 'kv-block ' + s.kv[i];
+    kv.textContent = s.kv[i] === 'reused' ? 'K[…] V[…]  ← 再利用' : s.kv[i] === 'recompute' ? 'K[?] V[?]  ← 再計算' : 'K[…] V[…]  ← 新規保存';
+  });
+  const costEl = document.getElementById('cost-tag');
+  costEl.textContent = s.cost[0];
+  costEl.className = 'cost-tag ' + s.cost[1];
+  document.getElementById('explain').textContent = s.explain;
+}
+
+select(document.querySelector('.scenario-btn'), 0);
+</script>
