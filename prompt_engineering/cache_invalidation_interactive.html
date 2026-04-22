@@ -1,0 +1,128 @@
+
+<style>
+.layer {
+  border-radius: var(--border-radius-lg);
+  border: 0.5px solid var(--color-border-tertiary);
+  padding: 14px 18px;
+  margin-bottom: 10px;
+  transition: background 0.25s, border-color 0.25s;
+  cursor: default;
+  position: relative;
+}
+.layer-label { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 2px; }
+.layer-title { font-size: 15px; font-weight: 500; color: var(--color-text-primary); }
+.layer-desc { font-size: 13px; color: var(--color-text-secondary); margin-top: 4px; }
+.layer.hit { background: var(--color-background-success); border-color: var(--color-border-success); }
+.layer.miss { background: var(--color-background-danger); border-color: var(--color-border-danger); }
+.layer.neutral { background: var(--color-background-secondary); }
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 20px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.badge-hit { background: var(--color-background-success); color: var(--color-text-success); }
+.badge-miss { background: var(--color-background-danger); color: var(--color-text-danger); }
+.scenario-btn {
+  padding: 8px 14px;
+  font-size: 13px;
+  border-radius: var(--border-radius-md);
+  border: 0.5px solid var(--color-border-secondary);
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: left;
+}
+.scenario-btn:hover { background: var(--color-background-secondary); }
+.scenario-btn.active { border-color: var(--color-border-primary); background: var(--color-background-secondary); font-weight: 500; }
+.result-box {
+  border-radius: var(--border-radius-md);
+  padding: 12px 16px;
+  font-size: 14px;
+  margin-top: 12px;
+  border: 0.5px solid var(--color-border-tertiary);
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+</style>
+
+<h2 class="sr-only">プロンプトキャッシュ無効化のインタラクティブ解説</h2>
+
+<p style="font-size:13px;color:var(--color-text-secondary);margin:0 0 12px;">どんな変更をしたか選んでみてください</p>
+
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;" id="buttons">
+  <button class="scenario-btn active" onclick="select(this,0)">何も変えていない</button>
+  <button class="scenario-btn" onclick="select(this,1)">ツール定義を変えた</button>
+  <button class="scenario-btn" onclick="select(this,2)">システムプロンプトを変えた</button>
+  <button class="scenario-btn" onclick="select(this,3)">会話内容を変えた（新しいメッセージ）</button>
+  <button class="scenario-btn" onclick="select(this,4)">画像を追加・削除した</button>
+</div>
+
+<div id="layer-tools" class="layer neutral">
+  <div class="layer-label">レイヤー 1（最上位）</div>
+  <div class="layer-title" id="t-tools">Tools（ツール定義）<span id="b-tools"></span></div>
+  <div class="layer-desc">「天気を調べる」などのツールの定義文</div>
+</div>
+
+<div id="layer-system" class="layer neutral">
+  <div class="layer-label">レイヤー 2</div>
+  <div class="layer-title" id="t-system">System（システムプロンプト）<span id="b-system"></span></div>
+  <div class="layer-desc">「あなたはアシスタントです」などの基本設定</div>
+</div>
+
+<div id="layer-messages" class="layer neutral">
+  <div class="layer-label">レイヤー 3（最下位）</div>
+  <div class="layer-title" id="t-messages">Messages（会話のやりとり）<span id="b-messages"></span></div>
+  <div class="layer-desc">ユーザーとアシスタントのメッセージ履歴</div>
+</div>
+
+<div class="result-box" id="result">シナリオを選ぶと、どのキャッシュが使えるか表示されます。</div>
+
+<script>
+const scenarios = [
+  {
+    tools: 'hit', system: 'hit', messages: 'hit',
+    result: 'すべてのキャッシュが有効です。前回と同じリクエストなので、3つのレイヤーすべてを再利用できます。コストが最小になります。'
+  },
+  {
+    tools: 'miss', system: 'miss', messages: 'miss',
+    result: 'ツール定義を変えると、その下にあるシステムプロンプトと会話履歴もまとめて無効化されます。すべて作り直しになります。ツールは最上位のレイヤーなので、影響が一番大きいです。'
+  },
+  {
+    tools: 'hit', system: 'miss', messages: 'miss',
+    result: 'ツール定義はそのままなのでキャッシュを再利用できますが、システムプロンプト以降は無効化されます。システムプロンプトを頻繁に変えるとコストが増えるので注意。'
+  },
+  {
+    tools: 'hit', system: 'hit', messages: 'miss',
+    result: '最もよくあるパターンです。会話が進むたびにメッセージは変わりますが、ツール定義とシステムプロンプトは変わらないのでキャッシュを再利用できます。マルチターン会話で効果的です。'
+  },
+  {
+    tools: 'hit', system: 'miss', messages: 'miss',
+    result: '画像を追加または削除すると、システムプロンプト以降が無効化されます。ツール定義のキャッシュだけ残ります。画像の有無はシステムプロンプトより下に影響します。'
+  }
+];
+
+function select(btn, idx) {
+  document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const s = scenarios[idx];
+  ['tools','system','messages'].forEach(key => {
+    const layer = document.getElementById('layer-' + key);
+    const badge = document.getElementById('b-' + key);
+    layer.className = 'layer ' + s[key];
+    if (s[key] === 'hit') {
+      badge.innerHTML = '<span class="badge badge-hit">キャッシュ有効</span>';
+    } else {
+      badge.innerHTML = '<span class="badge badge-miss">無効化</span>';
+    }
+  });
+  document.getElementById('result').textContent = s.result;
+}
+
+select(document.querySelector('.scenario-btn'), 0);
+</script>
